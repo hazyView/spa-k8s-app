@@ -1,0 +1,115 @@
+# Kubernetes deployment configurations
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: notetaker
+  labels:
+    app: notetaker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notetaker-app
+  namespace: notetaker
+  labels:
+    app: notetaker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notetaker
+  template:
+    metadata:
+      labels:
+        app: notetaker
+    spec:
+      initContainers:
+      - name: init-db
+        image: hazyview/notetaker:latest
+        command: ["python", "init_db.py"]
+        volumeMounts:
+        - name: notes-db-volume
+          mountPath: /app/instance
+          subPath: .
+      containers:
+      - name: notetaker
+        image: hazyview/notetaker:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: notetaker-secrets
+              key: secret-key
+        - name: DATABASE_URL
+          value: "sqlite:///notes.db"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: notes-db-volume
+          mountPath: /app/instance
+          subPath: .
+      volumes:
+      - name: notes-db-volume
+        persistentVolumeClaim:
+          claimName: notes-db-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notetaker-service
+  namespace: notetaker
+  labels:
+    app: notetaker
+spec:
+  selector:
+    app: notetaker
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: notes-db-pvc
+  namespace: notetaker
+  labels:
+    app: notetaker
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: notetaker-secrets
+  namespace: notetaker
+  labels:
+    app: notetaker
+type: Opaque
+data:
+  # echo -n 'your-secret-key-here' | base64
+  secret-key: eW91ci1zZWNyZXQta2V5LWhlcmU=

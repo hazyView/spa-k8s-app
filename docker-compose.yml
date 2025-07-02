@@ -1,0 +1,30 @@
+# Docker Compose for development
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - DATABASE_URL=sqlite:///notes.db
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    restart: unless-stopped
+    
+  # Optional: Add PostgreSQL for production
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_DB: notes
+  #     POSTGRES_USER: notes_user
+  #     POSTGRES_PASSWORD: notes_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+# volumes:
+#   postgres_data:
