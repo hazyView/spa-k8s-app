@@ -2,7 +2,7 @@
 
 A sleek, minimalistic note-taking application built with Flask. Features user authentication, real-time auto-save, and a beautiful responsive interface. Designed for easy containerization and Kubernetes deployment.
 
-## Features
+### Features
 
 ### 🔐 Security & Authentication
 - Secure user registration and login
