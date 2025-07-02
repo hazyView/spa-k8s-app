@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - NoteTaker{% endblock %}
+
+{% block content %}
+<div class="min-h-screen p-4">
+    <!-- Header -->
+    <header class="glass rounded-xl p-4 mb-6 fade-in">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-white">
+                <i class="fas fa-sticky-note mr-2"></i>NoteTaker
+            </h1>
+            <div class="flex items-center space-x-4">
+                <button id="new-note-btn" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-lg transition duration-200">
+                    <i class="fas fa-plus mr-2"></i>New Note
+                </button>
+                <a href="/logout" class="bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-lg transition duration-200">
+                    <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Current Note Editor -->
+        <div class="lg:col-span-2">
+            <div class="glass rounded-xl p-6 fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-white">
+                        <i class="fas fa-edit mr-2"></i>Current Note
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button id="save-note-btn" class="bg-green-500 bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-1 rounded transition duration-200" disabled>
+                            <i class="fas fa-save mr-1"></i>Save
+                        </button>
+                        <button id="delete-current-note-btn" class="bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-1 rounded transition duration-200">
+                            <i class="fas fa-trash mr-1"></i>Delete
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="no-current-note" class="text-center py-12 text-gray-300">
+                    <i class="fas fa-sticky-note text-4xl mb-4 opacity-50"></i>
+                    <p class="text-lg">No current note</p>
+                    <p class="text-sm">Create a new note or select an existing one to start writing</p>
+                </div>
+                
+                <div id="note-editor" class="hidden">
+                    <input type="text" id="note-title" placeholder="Note title..." 
+                           class="w-full bg-white bg-opacity-10 text-white text-xl font-medium placeholder-gray-300 border-none rounded-lg p-3 mb-4 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
+                    
+                    <textarea id="note-content" placeholder="Start writing your note..." 
+                              class="w-full h-96 bg-white bg-opacity-10 text-white placeholder-gray-300 border-none rounded-lg p-4 text-editor scrollbar-thin focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 resize-none"></textarea>
+                    
+                    <div class="flex justify-between items-center mt-4 text-sm text-gray-300">
+                        <span id="last-saved" class="italic"></span>
+                        <span id="word-count">0 words</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes List -->
+        <div class="lg:col-span-1">
+            <div class="glass rounded-xl p-6 fade-in">
+                <h2 class="text-xl font-semibold text-white mb-4">
+                    <i class="fas fa-list mr-2"></i>Your Notes
+                </h2>
+                
+                <div id="notes-list" class="space-y-3 max-h-96 overflow-y-auto scrollbar-thin">
+                    <div id="loading-notes" class="text-center py-8 text-gray-300">
+                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                        <p>Loading your notes...</p>
+                    </div>
+                </div>
+                
+                <div id="no-notes" class="hidden text-center py-8 text-gray-300">
+                    <i class="fas fa-sticky-note text-3xl mb-3 opacity-50"></i>
+                    <p>No notes yet</p>
+                    <p class="text-sm">Create your first note to get started</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Note Modal -->
+<div id="new-note-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div class="glass rounded-xl p-6 w-full max-w-md">
+        <h3 class="text-xl font-semibold text-white mb-4">Create New Note</h3>
+        <input type="text" id="new-note-title" placeholder="Enter note title..." 
+               class="w-full bg-white bg-opacity-10 text-white placeholder-gray-300 border border-white border-opacity-30 rounded-lg p-3 mb-4 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
+        <div class="flex space-x-3">
+            <button id="create-note-btn" class="flex-1 bg-green-500 bg-opacity-20 hover:bg-opacity-30 text-white py-2 rounded-lg transition duration-200">
+                Create
+            </button>
+            <button id="cancel-note-btn" class="flex-1 bg-gray-500 bg-opacity-20 hover:bg-opacity-30 text-white py-2 rounded-lg transition duration-200">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentNote = null;
+    let notes = [];
+    let saveTimeout = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCurrentNote();
+        loadNotes();
+        
+        // Event listeners for buttons
+        document.getElementById('new-note-btn').addEventListener('click', showNewNoteModal);
+        document.getElementById('save-note-btn').addEventListener('click', saveCurrentNote);
+        document.getElementById('delete-current-note-btn').addEventListener('click', deleteCurrentNote);
+        document.getElementById('create-note-btn').addEventListener('click', createNewNote);
+        document.getElementById('cancel-note-btn').addEventListener('click', hideNewNoteModal);
+        
+        // Setup auto-save for note editor
+        setupAutoSave();
+        
+        // Close modal on background click
+        document.getElementById('new-note-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideNewNoteModal();
+            }
+        });
+        
+        // Enter key to create note
+        document.getElementById('new-note-title').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                createNewNote();
+            }
+        });
+    });
+
+    function setupAutoSave() {
+        const titleInput = document.getElementById('note-title');
+        const contentTextarea = document.getElementById('note-content');
+        const saveBtn = document.getElementById('save-note-btn');
+        
+        if (!titleInput || !contentTextarea) {
+            console.log('Note editor elements not found, auto-save setup deferred');
+            return;
+        }
+        
+        function enableSaveButton() {
+            if (currentNote && saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('opacity-50');
+            }
+        }
+        
+        function disableSaveButton() {
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.classList.add('opacity-50');
+            }
+        }
+        
+        // Remove any existing listeners to prevent duplicates
+        titleInput.removeEventListener('input', handleInput);
+        contentTextarea.removeEventListener('input', handleInput);
+        
+        function handleInput() {
+            updateWordCount();
+            enableSaveButton();
+            clearTimeout(saveTimeout);
+            // Only auto-save if we have a current note and a title
+            saveTimeout = setTimeout(() => {
+                if (currentNote && titleInput.value.trim()) {
+                    saveCurrentNote();
+                }
+            }, 2000); // Auto-save after 2 seconds
+        }
+        
+        // Add the event listeners
+        titleInput.addEventListener('input', handleInput);
+        contentTextarea.addEventListener('input', handleInput);
+        
+        console.log('Auto-save setup completed');
+    }
+
+    async function loadCurrentNote() {
+        console.log('Loading current note...');
+        try {
+            const response = await axios.get('/api/notes/current');
+            console.log('Current note response:', response.data);
+            
+            if (response.data) {
+                currentNote = response.data;
+                console.log('Current note loaded:', currentNote);
+                showNoteEditor();
+                document.getElementById('note-title').value = currentNote.title;
+                document.getElementById('note-content').value = currentNote.content || '';
+                updateWordCount();
+                updateLastSaved();
+            } else {
+                console.log('No current note found');
+                showNoCurrentNote();
+            }
+        } catch (error) {
+            console.error('Error loading current note:', error);
+            if (error.response?.status === 401) {
+                console.log('User not authenticated, redirecting to login');
+                window.location.href = '/login';
+                return;
+            }
+            showNoCurrentNote();
+        }
+    }
+
+    async function loadNotes() {
+        try {
+            console.log('Loading notes from server...');
+            const response = await axios.get('/api/notes');
+            notes = response.data;
+            console.log('Notes loaded:', notes.length, 'notes');
+            renderNotesList();
+        } catch (error) {
+            console.error('Error loading notes:', error);
+            document.getElementById('loading-notes').innerHTML = '<p class="text-red-300">Failed to load notes</p>';
+        }
+    }
+
+    async function refreshNotes() {
+        try {
+            const response = await axios.get('/api/notes');
+            notes = response.data;
+            renderNotesList();
+        } catch (error) {
+            console.error('Error refreshing notes:', error);
+        }
+    }
+
+    function renderNotesList() {
+        const notesList = document.getElementById('notes-list');
+        const loadingDiv = document.getElementById('loading-notes');
+        const noNotesDiv = document.getElementById('no-notes');
+        
+        if (!notesList || !loadingDiv || !noNotesDiv) {
+            return;
+        }
+        
+        loadingDiv.classList.add('hidden');
+        
+        if (notes.length === 0) {
+            notesList.classList.add('hidden');
+            noNotesDiv.classList.remove('hidden');
+            return;
+        }
+        
+        noNotesDiv.classList.add('hidden');
+        notesList.classList.remove('hidden');
+        
+        notesList.innerHTML = notes.map(note => {
+            const isCurrentNote = currentNote && currentNote.id === note.id;
+            const updatedDate = new Date(note.updated_at).toLocaleDateString();
+            const preview = note.content ? note.content.substring(0, 100) + '...' : 'No content';
+            
+            return `
+                <div class="note-card bg-white bg-opacity-10 rounded-lg p-4 cursor-pointer transition-all duration-200 ${isCurrentNote ? 'ring-2 ring-white ring-opacity-50' : ''}" 
+                     onclick="selectNote(${note.id})" data-note-id="${note.id}">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-medium text-white truncate flex-1">${escapeHtml(note.title)}</h3>
+                        ${isCurrentNote ? '<i class="fas fa-star text-yellow-400 ml-2"></i>' : ''}
+                    </div>
+                    <p class="text-gray-300 text-sm mb-2 line-clamp-2">${escapeHtml(preview)}</p>
+                    <div class="flex justify-between items-center text-xs text-gray-400">
+                        <span>${updatedDate}</span>
+                        <button onclick="deleteNote(${note.id}, event)" class="hover:text-red-400 transition-colors">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function selectNote(noteId) {
+        try {
+            const response = await axios.post(`/api/notes/${noteId}/set-current`);
+            currentNote = response.data;
+            showNoteEditor();
+            document.getElementById('note-title').value = currentNote.title;
+            document.getElementById('note-content').value = currentNote.content || '';
+            updateWordCount();
+            updateLastSaved();
+            await refreshNotes(); // Refresh to ensure notes list is up to date
+        } catch (error) {
+            console.error('Error selecting note:', error);
+        }
+    }
+
+    async function saveCurrentNote() {
+        console.log('saveCurrentNote called, currentNote:', currentNote);
+        
+        if (!currentNote) {
+            console.warn('No current note selected');
+            return;
+        }
+        
+        const titleElement = document.getElementById('note-title');
+        const contentElement = document.getElementById('note-content');
+        
+        if (!titleElement || !contentElement) {
+            console.error('Note editor elements not found');
+            return;
+        }
+        
+        const title = titleElement.value.trim();
+        const content = contentElement.value;
+        
+        console.log('Saving note:', { id: currentNote.id, title, contentLength: content.length });
+        
+        if (!title) {
+            console.warn('No title provided, skipping save');
+            return;
+        }
+        
+        const saveBtn = document.getElementById('save-note-btn');
+        const originalText = saveBtn.innerHTML;
+        
+        try {
+            // Show saving state
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Saving...';
+            saveBtn.disabled = true;
+            
+            console.log('Making API request to update note:', currentNote.id);
+            
+            const response = await axios.put(`/api/notes/${currentNote.id}`, {
+                title: title,
+                content: content
+            }, {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            console.log('Save response received:', response);
+            console.log('Response status:', response.status);
+            console.log('Response data:', response.data);
+            
+            // Check if response is successful
+            if (response.status === 200 && response.data) {
+                currentNote = response.data;
+                
+                // Try updating last saved time
+                try {
+                    updateLastSaved();
+                    console.log('✅ Last saved time updated');
+                } catch (error) {
+                    console.error('❌ Error updating last saved:', error);
+                }
+                
+                // Try updating the note in the notes array
+                try {
+                    const noteIndex = notes.findIndex(n => n.id === currentNote.id);
+                    if (noteIndex !== -1) {
+                        notes[noteIndex] = currentNote;
+                        console.log('✅ Note updated in notes array');
+                    }
+                } catch (error) {
+                    console.error('❌ Error updating notes array:', error);
+                }
+                
+                // Try refreshing the notes list from server
+                try {
+                    await refreshNotes();
+                    console.log('✅ Notes list refreshed from server');
+                } catch (error) {
+                    console.error('❌ Error refreshing notes list:', error);
+                }
+                
+                // Show save confirmation
+                saveBtn.innerHTML = '<i class="fas fa-check mr-1"></i>Saved';
+                setTimeout(() => {
+                    saveBtn.innerHTML = originalText;
+                    saveBtn.disabled = false;
+                }, 1500);
+                
+                console.log('✅ Note saved successfully');
+                
+                console.log('✅ Note saved successfully - ALL STEPS COMPLETED');
+            } else {
+                throw new Error('Invalid response from server');
+            }
+            
+        } catch (error) {
+            console.error('Error saving note:', error);
+            console.error('Error response:', error.response);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            
+            let errorMessage = 'Failed to save note';
+            if (error.response?.data?.error) {
+                errorMessage = error.response.data.error;
+                console.error('Server error message:', error.response.data.error);
+            } else if (error.response?.status === 404) {
+                errorMessage = 'Note not found. Please refresh the page.';
+                // Reload the page to reset state
+                setTimeout(() => window.location.reload(), 2000);
+            } else if (error.response?.status === 401) {
+                errorMessage = 'Session expired. Please log in again.';
+                window.location.href = '/login';
+                return;
+            } else if (error.message) {
+                errorMessage = `Save failed: ${error.message}`;
+            }
+            
+            console.error('Final error message:', errorMessage);
+            
+            // Reset button state
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        }
+    }
+
+    async function deleteCurrentNote() {
+        if (!currentNote) return;
+        
+        console.log('🗑️ Starting delete current note process...');
+        console.log('Current note to delete:', currentNote);
+        
+        try {
+            console.log('📡 Sending delete request...');
+            const response = await axios.delete(`/api/notes/${currentNote.id}`);
+            console.log('✅ Delete response received:', response);
+            console.log('Response status:', response.status);
+            console.log('Response data:', response.data);
+            
+            // Check if response is successful
+            if (response.status === 200) {
+                console.log('✅ Backend confirmed successful deletion');
+                
+                // Clear current note
+                console.log('🔄 Clearing current note...');
+                currentNote = null;
+                try {
+                    showNoCurrentNote();
+                } catch (error) {
+                    console.error('Error showing no current note:', error);
+                }
+                
+                // Force refresh from server to get the latest state
+                console.log('🔄 Force refreshing notes list from server...');
+                await refreshNotes();
+                
+                console.log('🎉 Current note deleted successfully - ALL STEPS COMPLETED');
+                
+            } else {
+                throw new Error(`Delete failed with status ${response.status}`);
+            }
+            
+        } catch (error) {
+            console.error('💥 Error in delete current note process:', error);
+            console.error('Error response:', error.response);
+            console.error('Error message:', error.message);
+            console.error('Full error object:', error);
+            
+            let errorMessage = 'Failed to delete note';
+            if (error.response?.data?.error) {
+                errorMessage = error.response.data.error;
+            } else if (error.message) {
+                errorMessage = `Delete failed: ${error.message}`;
+            }
+            
+            // Show error in console only, no user prompt
+            console.error('Delete error:', errorMessage);
+        }
+    }
+
+    async function deleteNote(noteId, event) {
+        // Prevent event bubbling and multiple clicks
+        event.stopPropagation();
+        event.preventDefault();
+        
+        // Find and disable the button to prevent multiple clicks
+        const deleteButton = event.target.closest('button');
+        if (deleteButton) {
+            deleteButton.disabled = true;
+            const icon = deleteButton.querySelector('i');
+            if (icon) {
+                icon.className = 'fas fa-spinner fa-spin';
+            }
+        }
+        
+        console.log('🗑️ Starting delete note process...');
+        console.log('Note ID to delete:', noteId);
+        
+        try {
+            console.log('📡 Sending delete request...');
+            const response = await axios.delete(`/api/notes/${noteId}`);
+            console.log('✅ Delete response received:', response);
+            console.log('Response status:', response.status);
+            console.log('Response data:', response.data);
+            
+            // Check if response is successful
+            if (response.status === 200) {
+                console.log('✅ Backend confirmed successful deletion');
+                
+                // Clear current note if it was the deleted one
+                if (currentNote && currentNote.id === noteId) {
+                    console.log('🔄 Clearing current note (was the deleted note)');
+                    currentNote = null;
+                    try {
+                        showNoCurrentNote();
+                    } catch (error) {
+                        console.error('Error showing no current note:', error);
+                    }
+                }
+                
+                // Force refresh from server to get the latest state
+                console.log('🔄 Force refreshing notes list from server...');
+                await refreshNotes();
+                
+                console.log('🎉 Note deleted successfully - ALL STEPS COMPLETED');
+                
+            } else {
+                throw new Error(`Delete failed with status ${response.status}`);
+            }
+            
+        } catch (error) {
+            console.error('💥 Error in delete note process:', error);
+            console.error('Error response:', error.response);
+            console.error('Error message:', error.message);
+            console.error('Full error object:', error);
+            
+            // Re-enable the button on error
+            if (deleteButton) {
+                deleteButton.disabled = false;
+                const icon = deleteButton.querySelector('i');
+                if (icon) {
+                    icon.className = 'fas fa-trash';
+                }
+            }
+            
+            let errorMessage = 'Failed to delete note';
+            if (error.response?.data?.error) {
+                errorMessage = error.response.data.error;
+            } else if (error.message) {
+                errorMessage = `Delete failed: ${error.message}`;
+            }
+            
+            // Show error in console only, no user prompt
+            console.error('Delete error:', errorMessage);
+        }
+    }
+
+    function showNewNoteModal() {
+        document.getElementById('new-note-modal').classList.remove('hidden');
+        document.getElementById('new-note-title').focus();
+    }
+
+    function hideNewNoteModal() {
+        try {
+            const modal = document.getElementById('new-note-modal');
+            const titleInput = document.getElementById('new-note-title');
+            
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            if (titleInput) {
+                titleInput.value = '';
+            }
+            console.log('Modal hidden successfully');
+        } catch (error) {
+            console.error('Error hiding modal:', error);
+        }
+    }
+
+    async function createNewNote() {
+        const title = document.getElementById('new-note-title').value.trim();
+        
+        if (!title) {
+            return;
+        }
+        
+        try {
+            const response = await axios.post('/api/notes', {
+                title: title,
+                content: ''
+            }, {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.status === 201 && response.data) {
+                currentNote = response.data;
+                
+                showNoteEditor();
+                document.getElementById('note-title').value = currentNote.title;
+                document.getElementById('note-content').value = '';
+                document.getElementById('note-content').focus();
+                updateWordCount();
+                updateLastSaved();
+                
+                // Refresh notes list
+                await refreshNotes();
+                
+                hideNewNoteModal();
+                
+                // Reset save button state
+                const saveBtn = document.getElementById('save-note-btn');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.classList.remove('opacity-50');
+                    saveBtn.innerHTML = '<i class="fas fa-save mr-1"></i>Save';
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error creating note:', error);
+        }
+    }
+
+    function showNoteEditor() {
+        try {
+            const noCurrentNote = document.getElementById('no-current-note');
+            const noteEditor = document.getElementById('note-editor');
+            const saveBtn = document.getElementById('save-note-btn');
+            
+            if (noCurrentNote) {
+                noCurrentNote.classList.add('hidden');
+            }
+            if (noteEditor) {
+                noteEditor.classList.remove('hidden');
+            }
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('opacity-50');
+            }
+            
+            // Setup auto-save now that the editor is visible
+            setupAutoSave();
+        } catch (error) {
+            console.error('Error in showNoteEditor:', error);
+        }
+    }
+
+    function showNoCurrentNote() {
+        try {
+            const noteEditor = document.getElementById('note-editor');
+            const noCurrentNote = document.getElementById('no-current-note');
+            const saveBtn = document.getElementById('save-note-btn');
+            
+            if (noteEditor) {
+                noteEditor.classList.add('hidden');
+            }
+            if (noCurrentNote) {
+                noCurrentNote.classList.remove('hidden');
+            }
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.classList.add('opacity-50');
+            }
+        } catch (error) {
+            console.error('Error in showNoCurrentNote:', error);
+        }
+    }
+
+    function updateWordCount() {
+        try {
+            const contentElement = document.getElementById('note-content');
+            const wordCountElement = document.getElementById('word-count');
+            
+            if (contentElement && wordCountElement) {
+                const content = contentElement.value;
+                const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+                wordCountElement.textContent = `${wordCount} words`;
+                console.log('Word count updated:', wordCount);
+            } else {
+                console.warn('Word count elements not found');
+            }
+        } catch (error) {
+            console.error('Error updating word count:', error);
+        }
+    }
+
+    function updateLastSaved() {
+        try {
+            if (currentNote && currentNote.updated_at) {
+                const lastSaved = new Date(currentNote.updated_at).toLocaleString();
+                const lastSavedElement = document.getElementById('last-saved');
+                if (lastSavedElement) {
+                    lastSavedElement.textContent = `Last saved: ${lastSaved}`;
+                }
+                console.log('Last saved updated:', lastSaved);
+            }
+        } catch (error) {
+            console.error('Error updating last saved time:', error);
+        }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}
